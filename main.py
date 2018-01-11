@@ -25,16 +25,23 @@ def sample(env,
     paths = []
     """ YOUR CODE HERE """
     for i in range(num_paths):
+
         ob = env.reset()
         obs, acs, rewards, next_obs = [], [], [], []
+        steps = 0
+        print("sampling trajectory %d"%i)
+
         while True:
             obs.append(ob)
             ac = controller.get_action(ob)
+            env.render()
+            #print("action", ac)
             acs.append(ac)
             next_ob, rew, done, _ = env.step(ac)
+            steps += 1
             rewards.append(rew)
             next_obs.append(next_ob)
-            if done:
+            if done or steps > 100:
                 break
         path = {"observations" : np.array(obs),
                 "rewards" : np.array(rewards),
@@ -56,12 +63,12 @@ def compute_normalization(data):
 
     """ YOUR CODE HERE """
 
-    mean_obs = np.mean(np.concatenate([path['observations'] for path in data]), axis=1)
-    std_obs = np.std(np.concatenate([path['observations'] for path in data]), axis=1)
-    mean_action = np.mean(np.concatenate([path['actions'] for path in data]), axis=1)
-    std_action = np.std(np.concatenate([path['actions'] for path in data]), axis=1)
-    mean_deltas = np.mean(np.concatenate([path['next_observations'] - path['observations'] for path in data]), axis=1)
-    std_deltas = np.std(np.concatenate([path['next_observations'] - path['observations'] for path in data]), axis=1)
+    mean_obs = np.mean(np.concatenate([path['observations'] for path in data]), axis=0)
+    std_obs = np.std(np.concatenate([path['observations'] for path in data]), axis=0)
+    mean_action = np.mean(np.concatenate([path['actions'] for path in data]), axis=0)
+    std_action = np.std(np.concatenate([path['actions'] for path in data]), axis=0)
+    mean_deltas = np.mean(np.concatenate([path['next_observations'] - path['observations'] for path in data]), axis=0)
+    std_deltas = np.std(np.concatenate([path['next_observations'] - path['observations'] for path in data]), axis=0)
 
     return mean_obs, std_obs, mean_deltas, std_deltas, mean_action, std_action
 
@@ -189,13 +196,14 @@ def train(env,
     # Note: You don't need to use a mixing ratio in this assignment for new and old data as described in https://arxiv.org/abs/1708.02596
     #
 
-    dyn_model.fit(data)
-
     for itr in range(onpol_iters):
         """ YOUR CODE HERE """
 
+        dyn_model.fit(data)
+        new_data = sample(env, mpc_controller, num_paths_onpol, env_horizon)
+
         ob = env.reset()
-        costs, returns = []
+        costs, returns = [], []
 
         while True:
 
@@ -206,10 +214,13 @@ def train(env,
             costs.append(cost_fn(ob, ac, next_ob))
             returns.append(rew)
 
-            ob = next_obs
+            ob = next_ob
 
             if done:
                 break
+
+        data += new_data
+
         # LOGGING
         # Statistics for performance of MPC policy using
         # our learned dynamics model

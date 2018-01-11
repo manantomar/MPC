@@ -33,13 +33,16 @@ class NNDynamicsModel():
         """ YOUR CODE HERE """
         """ Note: Be careful about normalization """
 
+        self.normalization = normalization
+        self.batch_size = batch_size
+        self.iterations = iterations
+
         self.states = tf.placeholder(shape = [None, env.observation_space.shape[0]], dtype = tf.float32)
-        self.actions = tf.placeholder(shape = [None, env.action_space.shape[0]], dtype = tf.int32)
+        self.actions = tf.placeholder(shape = [None, env.action_space.shape[0]], dtype = tf.float32)
         self.deltas = tf.placeholder(shape = [None, env.observation_space.shape[0]], dtype = tf.float32)
         state_action_pair = tf.concat([self.states, self.actions], 1)
 
         self.model = build_mlp(state_action_pair, env.observation_space.shape[0], "model", n_layers, size, activation, output_activation)
-        self.normalization = normalization
 
         self.loss = tf.reduce_mean(tf.square((self.deltas) - self.model))
         self.update_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
@@ -56,11 +59,14 @@ class NNDynamicsModel():
         deltas = next_observations - observations
 
         "Normalize the data"
-        observations = (observations - self.normalization[0]) / self.normalization[1]
-        actions = (actions - self.normalization[4]) / self.normalization[5]
-        deltas = (deltas - self.normalization[2]) / self.normalization[3]
+        observations = (observations - self.normalization[0]) / (self.normalization[1] + 1e-10)
+        actions = (actions - self.normalization[4]) / (self.normalization[5] + 1e-10)
+        deltas = (deltas - self.normalization[2]) / (self.normalization[3] + 1e-10)
 
-        _ = tf.get_default_session().run(self.update_op, feed_dict = {self.states : observations, self.actions : actions, self.deltas : deltas})
+        for i in range(self.iterations):
+
+            batch_id = np.random.choice(observations.shape[0], self.batch_size)#, replace = False)
+            _ = tf.get_default_session().run(self.update_op, feed_dict = {self.states : observations[batch_id], self.actions : actions[batch_id], self.deltas : deltas[batch_id]})
 
 
     def predict(self, states, actions):

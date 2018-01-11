@@ -19,7 +19,7 @@ class RandomController(Controller):
 	def get_action(self, state):
 		""" YOUR CODE HERE """
 		""" Your code should randomly sample an action uniformly from the action space """
-		action = np.random.choice(self.env.action_space.shape[0], 1)[0]
+		action = self.env.action_space.sample()
 		return action
 
 
@@ -43,15 +43,16 @@ class MPCcontroller(Controller):
 		""" Note: be careful to batch your simulations through the model for speed """
 
 		# sample sequeces of action_space
-		action_set = np.random.choice(self.env.action_space.shape[0], size = (self.num_simulated_paths, self.horizon))
+		action_set = np.reshape([self.env.action_space.sample() for i in range(self.num_simulated_paths * self.horizon)], (self.num_simulated_paths, self.horizon, self.env.action_space.shape[0]))
 
-		state = np.repeat(sate.reshape([1,-1]), self.horizon, axis=0)
+		state = np.repeat(state.reshape([1,-1]), self.num_simulated_paths, axis=0)
 		cost = np.zeros([self.num_simulated_paths], dtype = np.float32)
+
 		# predict next next_states
 		for i in range(self.horizon):
-			next_state = self.dyn_model.predict(state, action_set[:,i])
+			next_state = self.dyn_model.predict(state, action_set[:,i,:])
 			for j in range(self.num_simulated_paths):
-				cost[j] += cost_fn(state[j,:], action_set[:,i][j], next_state[j,:])
+				cost[j] += self.cost_fn(state[j,:], action_set[j,i,:], next_state[j,:])
 			state = next_state
 
 		# calculate cost and choose optimal path
