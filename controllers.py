@@ -51,8 +51,9 @@ class MPCcontroller(Controller):
 		# predict next next_states
 		for i in range(self.horizon):
 			next_state = self.dyn_model.predict(state, action_set[:,i,:])
-			for j in range(self.num_simulated_paths):
-				cost[j] += self.cost_fn(state[j,:], action_set[j,i,:], next_state[j,:])
+
+			cost += self.cost_fn(state[:,:], action_set[:,i,:], next_state[:,:])
+
 			state = next_state
 
 		# calculate cost and choose optimal path

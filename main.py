@@ -29,12 +29,12 @@ def sample(env,
         ob = env.reset()
         obs, acs, rewards, next_obs = [], [], [], []
         steps = 0
-        print("sampling trajectory %d"%i)
+        #print("sampling trajectory %d"%i)
 
         while True:
             obs.append(ob)
             ac = controller.get_action(ob)
-            env.render()
+            #env.render()
             #print("action", ac)
             acs.append(ac)
             next_ob, rew, done, _ = env.step(ac)
@@ -199,26 +199,19 @@ def train(env,
     for itr in range(onpol_iters):
         """ YOUR CODE HERE """
 
+        print("fitting dynamics...")
         dyn_model.fit(data)
+        print("sampling new trajectories...")
         new_data = sample(env, mpc_controller, num_paths_onpol, env_horizon)
 
-        ob = env.reset()
         costs, returns = [], []
 
-        while True:
+        for path in data:
 
-            ac = mpc_controller.get_action(ob)
-            next_ob, rew, done, _ = env.step(ac)
-            env.render()
+            costs.append(path_cost(cost_fn, path))
+            returns.append(path['rewards'])
 
-            costs.append(cost_fn(ob, ac, next_ob))
-            returns.append(rew)
-
-            ob = next_ob
-
-            if done:
-                break
-
+        print("returns ",returns)
         data += new_data
 
         # LOGGING
