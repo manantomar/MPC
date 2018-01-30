@@ -6,8 +6,8 @@ def build_mlp(input_placeholder,
               output_size,
               scope,
               n_layers=2,
-              size=500,
-              activation=tf.nn.relu,
+              size=64,
+              activation=tf.tanh,
               output_activation=None
               ):
     out = input_placeholder
@@ -17,7 +17,7 @@ def build_mlp(input_placeholder,
         out = tf.layers.dense(out, output_size, activation=output_activation)
     return out
 
-class NNDynamicsModel():
+class NNPolicy():
     def __init__(self,
                  env,
                  n_layers,
@@ -39,39 +39,36 @@ class NNDynamicsModel():
 
         self.states = tf.placeholder(shape = [None, env.observation_space.shape[0]], dtype = tf.float32)
         self.actions = tf.placeholder(shape = [None, env.action_space.shape[0]], dtype = tf.float32)
-        self.deltas = tf.placeholder(shape = [None, env.observation_space.shape[0]], dtype = tf.float32)
-        state_action_pair = tf.concat([self.states, self.actions], 1)
 
-        self.model = build_mlp(state_action_pair, env.observation_space.shape[0], "model", n_layers, size, activation, output_activation)
+        self.mean = build_mlp(self.states, env.action_space.shape[0], "policy", n_layers, size, activation, output_activation)
 
-        self.loss = tf.reduce_mean(tf.square((self.deltas) - self.model))
+        self.loss = tf.reduce_mean(tf.square((self.actions) - self.mean))
         self.update_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
 
     def fit(self, data):
         """
-        Write a function to take in a dataset of (unnormalized)states, (unnormalized)actions, (unnormalized)next_states and fit the dynamics model going from normalized states, normalized actions to normalized state differences (s_t+1 - s_t)
+        Write a function to take in a dataset of (unnormalized)states, (unnormalized)actions and imitate the actions taken by an expert.
         """
 
         """YOUR CODE HERE """
         observations = np.concatenate([path['observations'] for path in data])
         actions = np.concatenate([path['actions'] for path in data])
-        next_observations = np.concatenate([path['next_observations'] for path in data])
-        deltas = next_observations - observations
 
         "Normalize the data"
         observations = (observations - self.normalization[0]) / (self.normalization[1] + 1e-10)
         actions = (actions - self.normalization[4]) / (self.normalization[5] + 1e-10)
-        deltas = (deltas - self.normalization[2]) / (self.normalization[3] + 1e-10)
 
         for i in range(self.iterations):
 
             batch_id = np.random.choice(observations.shape[0], self.batch_size)#, replace = False)
-            _ = tf.get_default_session().run(self.update_op, feed_dict = {self.states : observations[batch_id], self.actions : actions[batch_id], self.deltas : deltas[batch_id]})
+            _ = tf.get_default_session().run(self.update_op, feed_dict = {self.states : observations[batch_id], self.actions : actions[batch_id]})
 
 
-    def predict(self, states, actions):
-        """ Write a function to take in a batch of (unnormalized) states and (unnormalized) actions and return the (unnormalized) next states as predicted by using the model """
+    def get_action(self, states):
+        """ Write a function to take in a batch of (unnormalized) states and return the (unnormalized) actions as predicted by using the model """
         """ YOUR CODE HERE """
 
-        next_observations = states + tf.get_default_session().run(self.model, feed_dict = {self.states : states, self.actions : actions})
-        return next_observations
+        mean = tf.get_default_session().run(self.model, feed_dict = {self.states : states})
+        std = np.ones(mean.shape[0])
+
+        return tf.contrib.distributions.MultivariateNormalDiag(mean, std)
