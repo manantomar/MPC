@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import gym
 from dynamics import NNDynamicsModel
+from policy import NNPolicy
 from controllers import MPCcontroller, RandomController
 from cost_functions import cheetah_cost_fn, trajectory_cost_fn
 import time
@@ -10,6 +11,8 @@ import os
 import copy
 #import matplotlib.pyplot as plt
 from cheetah_env import HalfCheetahEnvNew
+
+import roboschool
 
 def sample(env,
            controller,
@@ -85,10 +88,10 @@ def train(env,
          logdir=None,
          render=False,
          learning_rate_dyn=1e-3,
-         learning_rate_policy=1e-4
+         learning_rate_policy=1e-4,
          onpol_iters=10,
          dynamics_iters=60,
-         policy_iters=100
+         policy_iters=100,
          batch_size=512,
          num_paths_random=10,
          num_paths_onpol=10,
@@ -178,12 +181,12 @@ def train(env,
                                 learning_rate=learning_rate_dyn,
                                 sess=sess)
 
-    dyn_model = NNPolicy(env=env,
-                        normalization=normalization,
-                        batch_size=batch_size,
-                        iterations=policy_iters,
-                        learning_rate=learning_rate_policy,
-                        sess=sess)
+    policy = NNPolicy(env=env,
+                    normalization=normalization,
+                    batch_size=batch_size,
+                    iterations=policy_iters,
+                    learning_rate=learning_rate_policy,
+                    sess=sess)
 
     mpc_controller = MPCcontroller(env=env,
                                    dyn_model=dyn_model,
@@ -205,6 +208,7 @@ def train(env,
     # Note: You don't need to use a mixing ratio in this assignment for new and old data as described in https://arxiv.org/abs/1708.02596
     #
 
+    # training the MPC controller as well as dynamics
     for itr in range(onpol_iters):
         """ YOUR CODE HERE """
 
@@ -218,11 +222,13 @@ def train(env,
         for path in data:
 
             costs.append(path_cost(cost_fn, path))
-            returns.append(path['rewards'])
+            returns.append(np.sum(path['rewards']))
 
         print("returns ",returns)
         data += new_data
 
+        print("fitting policy...")
+        policy.fit(data)
         # LOGGING
         # Statistics for performance of MPC policy using
         # our learned dynamics model
@@ -240,21 +246,32 @@ def train(env,
 
         logz.dump_tabular()
 
+    # applying the learned neural policy
+    ob = env.reset()
+
+    while True:
+        a = policy.get_action(ob.reshape((1, ob.shape[0])))
+        next_ob, reward, done, info = env.step(a[0])
+        env.render()
+        ob = next_ob
+        if done:
+            break
+
 def main():
 
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env_name', type=str, default='HalfCheetah-v1')
+    parser.add_argument('--env_name', type=str, default='aHalfCheetah-v1')
     # Experiment meta-params
     parser.add_argument('--exp_name', type=str, default='mb_mpc')
     parser.add_argument('--seed', type=int, default=3)
     parser.add_argument('--render', action='store_true')
     # Training args
     parser.add_argument('--learning_rate_dyn', '-lr', type=float, default=1e-3)
-    parser.add_argument('--learning_rate_policy', '-lr', type=float, default=1e-4)
-    parser.add_argument('--onpol_iters', '-n', type=int, default=10)
+    parser.add_argument('--learning_rate_policy', '-lrp', type=float, default=1e-4)
+    parser.add_argument('--onpol_iters', '-n', type=int, default=1)
     parser.add_argument('--dyn_iters', '-nd', type=int, default=60)
-    parser.add_argument('--policy_iters', '-nd', type=int, default=100)
+    parser.add_argument('--policy_iters', '-ndp', type=int, default=100)
     parser.add_argument('--batch_size', '-b', type=int, default=512)
     # Data collection
     parser.add_argument('--random_paths', '-r', type=int, default=10)
@@ -286,7 +303,7 @@ def main():
         cost_fn = cheetah_cost_fn
 
     else:
-        env = gym.make('Pusher-v0')
+        env = gym.make('RoboschoolHalfCheetah-v1')
         cost_fn = cheetah_cost_fn
     train(env=env,
                  cost_fn=cost_fn,

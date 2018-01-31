@@ -20,10 +20,6 @@ def build_mlp(input_placeholder,
 class NNPolicy():
     def __init__(self,
                  env,
-                 n_layers,
-                 size,
-                 activation,
-                 output_activation,
                  normalization,
                  batch_size,
                  iterations,
@@ -40,7 +36,7 @@ class NNPolicy():
         self.states = tf.placeholder(shape = [None, env.observation_space.shape[0]], dtype = tf.float32)
         self.actions = tf.placeholder(shape = [None, env.action_space.shape[0]], dtype = tf.float32)
 
-        self.mean = build_mlp(self.states, env.action_space.shape[0], "policy", n_layers, size, activation, output_activation)
+        self.mean = build_mlp(self.states, env.action_space.shape[0], "policy")#, n_layers, size, activation, output_activation)
 
         self.loss = tf.reduce_mean(tf.square((self.actions) - self.mean))
         self.update_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
@@ -68,7 +64,7 @@ class NNPolicy():
         """ Write a function to take in a batch of (unnormalized) states and return the (unnormalized) actions as predicted by using the model """
         """ YOUR CODE HERE """
 
-        mean = tf.get_default_session().run(self.model, feed_dict = {self.states : states})
-        std = np.ones(mean.shape[0])
+        mean = tf.get_default_session().run(self.mean, feed_dict = {self.states : states})
+        std = np.ones(mean.shape[1], dtype=np.float32)
 
-        return tf.contrib.distributions.MultivariateNormalDiag(mean, std)
+        return tf.get_default_session().run(tf.contrib.distributions.MultivariateNormalDiag(mean, std).sample())
