@@ -2,40 +2,56 @@ import numpy as np
 from numpy.linalg import inv
 from scipy.optimize import approx_fprime
 
-def approx_fdoubleprime(x, i):
-    return approx_fprime(x, simulate_step[1], self.delta)[i]
+class iLQR:
 
-class iLQR():
+    def __init__(self, env, delta, T, dyn_model, cost_fn):
 
-    def __init__(self, ):
-
+        self.env = env
         self.delta = delta
         self.T = T
+        self.dyn_model = dyn_model
+        self.cost_fn = cost_fn
 
     def simulate_step(self, x):
 
-        next_x, _, _, _ = self.env.step(x[1])
-        delta_x = next_x - x[0]
+        xu = [x[:self.env.observation_space.shape[0]], x[self.env.observation_space.shape[0]:]]
+
+        next_x = self.dyn_model.predict(xu[0], xu[1])
+        delta_x = next_x - xu[0]
 
         "get cost"
-        cost = get_cost(x[0], x[1])
+        cost = self.cost_fn(xu[0], xu[1], next_x[0])
 
-        return next_x, cost
+        return next_x[0], cost
+
+    def simulate_next_state(self, x, i):
+        return self.simulate_step(x)[0][i]
+
+    def simulate_cost(self, x):
+        return self.simulate_step(x)[1]
+
+    def approx_fdoubleprime(self, x, i):
+        return approx_fprime(x, self.simulate_cost, self.delta)[i]
 
     def finite_difference(self, x, u):
 
         "calling finite difference for delta perturbation"
+        xu = np.concatenate((x, u))
 
-        F = approx_fprime([x,u], simulate_step[0], self.delta)
+        F = np.zeros((x.shape[0], xu.shape[0]))
+        print(x.shape[0])
 
-        c = approx_fprime([x,u], simulate_step[1], self.delta)
+        for i in range(x.shape[0]):
+            F[i,:] = approx_fprime(xu, self.simulate_next_state, self.delta, i)
 
-        C = np.zeros((len([x,u]), len([x,u])))
+        c = approx_fprime(xu, self.simulate_cost, self.delta)
 
-        C[:self.n,:] = approx_fprime([x,u], approx_fdoubleprime, self.delta, 0)
-        C[self.n:,:] = approx_fprime([x,u], approx_fdoubleprime, self.delta, 1)
+        C = np.zeros((len(xu), len(xu)))
 
-        f = np.zeros((len([x,u])))
+        C[:x.shape[0],:] = approx_fprime(xu, self.approx_fdoubleprime, self.delta, 0)
+        C[x.shape[0]:,:] = approx_fprime(xu, self.approx_fdoubleprime, self.delta, 1)
+
+        f = np.zeros((len(xu)))
 
         return C, F, c, f
 
@@ -45,9 +61,9 @@ class iLQR():
 
         C, F, c, f = [], [], [], []
 
-        for t in range(self.T):
+        for t in range(self.T - 1):
 
-            Ct, Ft, ct, ft = finite_difference(x_seq[t], u_seq[t], delta)
+            Ct, Ft, ct, ft = self.finite_difference(x_seq[t], u_seq[t])
 
             C.append(Ct)
             F.append(Ft)
@@ -55,24 +71,35 @@ class iLQR():
             f.append(ft)
 
         "TODO : C, F, c, f for time step T are different. Why ?"
-        
+
+        u = np.zeros((u_seq[0].shape))
+
+        Ct, Ft, ct, ft = self.finite_difference(x_seq[-1], u)
+
+        C.append(Ct)
+        F.append(Ft)
+        c.append(ct)
+        f.append(ft)
+
         return C, F, c, f
 
     def backward(self, x_seq, u_seq):
 
         "initialize F_t, C_t, f_t, c_t, V_t, v_t"
 
-        F, f, C, c = finite_difference(x_seq, u_seq)
+        C, F, c, f = self.differentiate(x_seq, u_seq)
+
+        n = x_seq[0].shape[0]
 
         "initialize V_t1 and v_t1"
 
         c_x = c[-1][:n]
         c_u = c[-1][n:]
 
-        C_xx = C[-1][:n,0]
-        C_xu = C[-1][:n,1]
-        C_ux = C[-1][n:,0]
-        C_uu = C[-1][n:,1]
+        C_xx = C[-1][:n,:n]
+        C_xu = C[-1][:n,n:]
+        C_ux = C[-1][n:,:n]
+        C_uu = C[-1][n:,n:]
 
         K[-1] = -np.dot(inv(C_uu), C_ux)
         k[-1] = -np.dot(inv(C_uu), C_u)
@@ -114,14 +141,8 @@ class iLQR():
         self.K = K
         self.k = k
 
-    def forward(self, state, K, k):
-
-        u = np.dot(K, state) + k
-
-        return u
-
-    def get_action(self, state):
+    def get_action_one_step(self, state, t, x, u):
 
         "TODO : Add delta U's to given action array"
 
-        return  self.forward(state, self.K[0], self.k[0])
+        return np.dot(self.K[t], (state - x)) + self.k[t] + u

@@ -73,5 +73,10 @@ class NNDynamicsModel():
         """ Write a function to take in a batch of (unnormalized) states and (unnormalized) actions and return the (unnormalized) next states as predicted by using the model """
         """ YOUR CODE HERE """
 
+        if len(states.shape) == 1:
+            states = states.reshape((1, states.shape[0]))
+        if len(actions.shape) == 1:
+            actions = actions.reshape((1, actions.shape[0]))
+
         next_observations = states + tf.get_default_session().run(self.model, feed_dict = {self.states : states, self.actions : actions})
         return next_observations

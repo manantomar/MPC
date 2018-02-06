@@ -3,7 +3,7 @@ import tensorflow as tf
 import gym
 from dynamics import NNDynamicsModel
 from policy import NNPolicy
-from controllers import MPCcontroller, RandomController
+from controllers import MPCcontroller, RandomController, LQRcontroller
 from cost_functions import cheetah_cost_fn, trajectory_cost_fn
 import time
 import logz
@@ -11,8 +11,6 @@ import os
 import copy
 #import matplotlib.pyplot as plt
 from cheetah_env import HalfCheetahEnvNew
-
-import roboschool
 
 def sample(env,
            controller,
@@ -194,6 +192,13 @@ def train(env,
                                    cost_fn=cost_fn,
                                    num_simulated_paths=num_simulated_paths)
 
+    lqr_controller = LQRcontroller(env=env,
+                                   delta=0.005,
+                                   T=15,
+                                   dyn_model=dyn_model,
+                                   cost_fn=cost_fn,
+                                   iterations=1)
+
 
     #========================================================
     #
@@ -215,7 +220,7 @@ def train(env,
         print("fitting dynamics...")
         dyn_model.fit(data)
         print("sampling new trajectories...")
-        new_data = sample(env, mpc_controller, num_paths_onpol, env_horizon)
+        new_data = sample(env, lqr_controller, num_paths_onpol, env_horizon)
 
         costs, returns = [], []
 
@@ -261,7 +266,7 @@ def main():
 
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env_name', type=str, default='aHalfCheetah-v1')
+    parser.add_argument('--env_name', type=str, default='HalfCheetah-v1')
     # Experiment meta-params
     parser.add_argument('--exp_name', type=str, default='mb_mpc')
     parser.add_argument('--seed', type=int, default=3)
@@ -269,14 +274,14 @@ def main():
     # Training args
     parser.add_argument('--learning_rate_dyn', '-lr', type=float, default=1e-3)
     parser.add_argument('--learning_rate_policy', '-lrp', type=float, default=1e-4)
-    parser.add_argument('--onpol_iters', '-n', type=int, default=1)
+    parser.add_argument('--onpol_iters', '-n', type=int, default=10)
     parser.add_argument('--dyn_iters', '-nd', type=int, default=60)
     parser.add_argument('--policy_iters', '-ndp', type=int, default=100)
     parser.add_argument('--batch_size', '-b', type=int, default=512)
     # Data collection
     parser.add_argument('--random_paths', '-r', type=int, default=10)
     parser.add_argument('--onpol_paths', '-d', type=int, default=10)
-    parser.add_argument('--simulated_paths', '-sp', type=int, default=1000)
+    parser.add_argument('--simulated_paths', '-sp', type=int, default=100)
     parser.add_argument('--ep_len', '-ep', type=int, default=1000)
     # Neural network architecture args
     parser.add_argument('--n_layers', '-l', type=int, default=2)
@@ -303,7 +308,7 @@ def main():
         cost_fn = cheetah_cost_fn
 
     else:
-        env = gym.make('RoboschoolHalfCheetah-v1')
+        env = gym.make('HalfCheetah-v1')
         cost_fn = cheetah_cost_fn
     train(env=env,
                  cost_fn=cost_fn,

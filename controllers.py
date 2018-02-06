@@ -1,6 +1,7 @@
 import numpy as np
 from cost_functions import trajectory_cost_fn
 import time
+from iLQR import iLQR
 
 class Controller():
 	def __init__(self):
@@ -59,3 +60,55 @@ class MPCcontroller(Controller):
 		# calculate cost and choose optimal path
 		act = np.argmin(cost)
 		return action_set[act, 0]
+
+class LQRcontroller(iLQR):
+
+	def __init__(self,
+				env,
+				delta,
+				T,
+				dyn_model,
+				cost_fn,
+				iterations,
+				):
+		iLQR.__init__(self, env, delta, T, dyn_model, cost_fn)
+		self.iterations = iterations
+
+	def get_action(self, state):
+
+		U_hat = np.reshape([self.env.action_space.sample() for i in range(self.T - 1)], (self.T - 1, self.env.action_space.shape[0]))
+
+		X_hat = []
+		X_hat.append(state)
+		x = state
+
+		for i in range(self.T - 1):
+			next_state = self.dyn_model.predict(x, U_hat[i,:])
+
+			X_hat.append(next_state[0])
+			x = next_state
+
+		X_hat = np.asarray(X_hat)
+
+		for i in range(self.iterations):
+			self.backward(X_hat, U_hat)
+
+			x = X_hat[0]
+
+			U = [None] * (T - 1)
+			X = [None] * T
+
+			for t in range(T - 1):
+				action = self.get_action_one_step(x, t, X_hat[t], U_hat[t])
+
+				X[t] = x
+				U[t] = u
+
+				x = self.dyn_model.predict(x, u)
+
+			X[-1] = x
+
+			X_hat = np.array(X)
+			U_hat = np.array(U)
+
+		return U_hat[0]
