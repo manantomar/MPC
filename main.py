@@ -42,7 +42,7 @@ def sample(env,
             steps += 1
             rewards.append(rew)
             next_obs.append(next_ob)
-            if done or steps > 100:
+            if done or steps > 10:
                 break
         path = {"observations" : np.array(obs),
                 "rewards" : np.array(rewards),
@@ -92,7 +92,7 @@ def train(env,
          policy_iters=100,
          batch_size=512,
          num_paths_random=10,
-         num_paths_onpol=10,
+         num_paths_onpol=5,
          num_simulated_paths=10000,
          env_horizon=1000,
          mpc_horizon=15,
@@ -194,7 +194,7 @@ def train(env,
 
     lqr_controller = LQRcontroller(env=env,
                                    delta=0.005,
-                                   T=15,
+                                   T=2,
                                    dyn_model=dyn_model,
                                    cost_fn=cost_fn,
                                    iterations=1)
@@ -274,7 +274,7 @@ def main():
     # Training args
     parser.add_argument('--learning_rate_dyn', '-lr', type=float, default=1e-3)
     parser.add_argument('--learning_rate_policy', '-lrp', type=float, default=1e-4)
-    parser.add_argument('--onpol_iters', '-n', type=int, default=10)
+    parser.add_argument('--onpol_iters', '-n', type=int, default=2)
     parser.add_argument('--dyn_iters', '-nd', type=int, default=60)
     parser.add_argument('--policy_iters', '-ndp', type=int, default=100)
     parser.add_argument('--batch_size', '-b', type=int, default=512)

@@ -95,11 +95,11 @@ class LQRcontroller(iLQR):
 
 			x = X_hat[0]
 
-			U = [None] * (T - 1)
-			X = [None] * T
+			U = [None] * (self.T - 1)
+			X = [None] * self.T
 
-			for t in range(T - 1):
-				action = self.get_action_one_step(x, t, X_hat[t], U_hat[t])
+			for t in range(self.T - 1):
+				u = self.get_action_one_step(x, t, X_hat[t], U_hat[t])
 
 				X[t] = x
 				U[t] = u

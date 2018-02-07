@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.linalg import inv
+from scipy.linalg import inv
 from scipy.optimize import approx_fprime
 
 class iLQR:
@@ -39,7 +39,6 @@ class iLQR:
         xu = np.concatenate((x, u))
 
         F = np.zeros((x.shape[0], xu.shape[0]))
-        print(x.shape[0])
 
         for i in range(x.shape[0]):
             F[i,:] = approx_fprime(xu, self.simulate_next_state, self.delta, i)
@@ -48,10 +47,10 @@ class iLQR:
 
         C = np.zeros((len(xu), len(xu)))
 
-        C[:x.shape[0],:] = approx_fprime(xu, self.approx_fdoubleprime, self.delta, 0)
-        C[x.shape[0]:,:] = approx_fprime(xu, self.approx_fdoubleprime, self.delta, 1)
+        for i in range(xu.shape[0]):
+            C[i,:] = approx_fprime(xu, self.approx_fdoubleprime, self.delta, i)
 
-        f = np.zeros((len(xu)))
+        f = np.zeros((len(x)))
 
         return C, F, c, f
 
@@ -101,8 +100,14 @@ class iLQR:
         C_ux = C[-1][n:,:n]
         C_uu = C[-1][n:,n:]
 
+        K = np.zeros((self.T+1, u_seq[0].shape[0], x_seq[0].shape[0]))
+        k = np.zeros((self.T+1, u_seq[0].shape[0]))
+
+        V = np.zeros((self.T+1, x_seq[0].shape[0], x_seq[0].shape[0]))
+        v = np.zeros((self.T+1, x_seq[0].shape[0]))
+
         K[-1] = -np.dot(inv(C_uu), C_ux)
-        k[-1] = -np.dot(inv(C_uu), C_u)
+        k[-1] = -np.dot(inv(C_uu), c_u)
 
         V[-1] = C_xx + np.dot(C_xu, K[-1]) + np.dot(K[-1].T, C_ux) + np.dot(np.dot(K[-1].T, C_uu), K[-1])
         v[-1] = c_x + np.dot(C_xu, k[-1]) + np.dot(K[-1].T, c_u) + np.dot(np.dot(K[-1].T, C_uu), k[-1])
@@ -118,6 +123,7 @@ class iLQR:
             "update Q"
 
             Q[t] = C[t] + np.dot(np.dot(F[t].T, V[t+1]), F[t])
+            print(F[t].shape, f[t].shape, V[t+1].shape)
             q[t] = c[t] + np.dot(np.dot(F[t].T, V[t+1]), f[t]) + np.dot(F[t].T, v[t+1])
 
             "differentiate Q to get Q_uu, Q_xx, Q_ux, Q_u, Q_x"
@@ -125,10 +131,10 @@ class iLQR:
             q_x = q[t][:n]
             q_u = q[t][n:]
 
-            Q_xx = Q[t][:n,0]
-            Q_xu = Q[t][:n,1]
-            Q_ux = Q[t][n:,0]
-            Q_uu = Q[t][n:,1]
+            Q_xx = Q[t][:n,:n]
+            Q_xu = Q[t][:n,n:]
+            Q_ux = Q[t][n:,:n]
+            Q_uu = Q[t][n:,n:]
 
             "update K, k, V, v"
 
