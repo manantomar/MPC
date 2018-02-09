@@ -95,20 +95,21 @@ class LQRcontroller(iLQR):
 
 			x = X_hat[0]
 
-			U = [None] * (self.T - 1)
-			X = [None] * self.T
+			U = np.zeros(U_hat.shape)
+			X = np.zeros(X_hat.shape)
 
 			for t in range(self.T - 1):
 				u = self.get_action_one_step(x, t, X_hat[t], U_hat[t])
 
 				X[t] = x
 				U[t] = u
-
-				x = self.dyn_model.predict(x, u)
+				
+				x = self.dyn_model.predict(x, u)[0]
 
 			X[-1] = x
-
-			X_hat = np.array(X)
-			U_hat = np.array(U)
+			print("X_hat for iteration {} is {}".format(i, X_hat))
+			print("U_hat for iteration {} is {}".format(i, U_hat))
+			X_hat = X
+			U_hat = U
 
 		return U_hat[0]

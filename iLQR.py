@@ -99,7 +99,7 @@ class iLQR:
         C_xu = C[-1][:n,n:]
         C_ux = C[-1][n:,:n]
         C_uu = C[-1][n:,n:]
-
+        print(C_uu)
         K = np.zeros((self.T+1, u_seq[0].shape[0], x_seq[0].shape[0]))
         k = np.zeros((self.T+1, u_seq[0].shape[0]))
 
@@ -123,7 +123,6 @@ class iLQR:
             "update Q"
 
             Q[t] = C[t] + np.dot(np.dot(F[t].T, V[t+1]), F[t])
-            print(F[t].shape, f[t].shape, V[t+1].shape)
             q[t] = c[t] + np.dot(np.dot(F[t].T, V[t+1]), f[t]) + np.dot(F[t].T, v[t+1])
 
             "differentiate Q to get Q_uu, Q_xx, Q_ux, Q_u, Q_x"
@@ -146,9 +145,11 @@ class iLQR:
 
         self.K = K
         self.k = k
+        self.std = inv(Q_uu)
 
     def get_action_one_step(self, state, t, x, u):
 
         "TODO : Add delta U's to given action array"
 
-        return np.dot(self.K[t], (state - x)) + self.k[t] + u
+        mean = np.dot(self.K[t], (state - x)) + self.k[t] + u
+        return np.random.normal(mean, 1)

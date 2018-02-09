@@ -5,7 +5,7 @@ import numpy as np
 def build_mlp(input_placeholder,
               output_size,
               scope,
-              n_layers=2,
+              n_layers=1,
               size=64,
               activation=tf.tanh,
               output_activation=None
@@ -24,7 +24,10 @@ class NNPolicy():
                  batch_size,
                  iterations,
                  learning_rate,
-                 sess
+                 sess,
+                 model_path,
+                 save_path,
+                 load_model
                  ):
         """ YOUR CODE HERE """
         """ Note: Be careful about normalization """
@@ -40,6 +43,13 @@ class NNPolicy():
 
         self.loss = tf.reduce_mean(tf.square((self.actions) - self.mean))
         self.update_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
+
+        self.sess = sess
+        self.model_path = model_path
+        self.save_path = save_path
+        self.saver = tf.train.Saver(max_to_keep=1)
+        if load_model:
+            self.saver.restore(self.sess, self.model_path)
 
     def fit(self, data):
         """
@@ -58,7 +68,8 @@ class NNPolicy():
 
             batch_id = np.random.choice(observations.shape[0], self.batch_size)#, replace = False)
             _ = tf.get_default_session().run(self.update_op, feed_dict = {self.states : observations[batch_id], self.actions : actions[batch_id]})
-
+        print("saving now...")
+        self.saver.save(self.sess, self.save_path, global_step=0)
 
     def get_action(self, states):
         """ Write a function to take in a batch of (unnormalized) states and return the (unnormalized) actions as predicted by using the model """

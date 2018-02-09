@@ -5,6 +5,17 @@ import numpy as np
 #
 # Environment-specific cost functions:
 #
+def pendulum_cost_fn(state, action, next_state):
+
+    if len(state.shape) > 1:
+
+        scores=np.zeros((state.shape[0],))
+
+        scores-= (next_state[:,1] - state[:,1]) + 0.001 * action**2
+        return scores
+
+    score = np.abs(next_state[1]) + 0.001 * action**2
+    return score
 
 def cheetah_cost_fn(state, action, next_state):
     if len(state.shape) > 1:
@@ -27,7 +38,7 @@ def cheetah_cost_fn(state, action, next_state):
 
         scores-= (next_state[:,17] - state[:,17]) / 0.01 #+ 0.1 * (np.sum(action**2, axis=1))
         return scores
-    
+
     heading_penalty_factor=10
     score = 0
 

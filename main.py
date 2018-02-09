@@ -4,7 +4,7 @@ import gym
 from dynamics import NNDynamicsModel
 from policy import NNPolicy
 from controllers import MPCcontroller, RandomController, LQRcontroller
-from cost_functions import cheetah_cost_fn, trajectory_cost_fn
+from cost_functions import cheetah_cost_fn, trajectory_cost_fn, pendulum_cost_fn
 import time
 import logz
 import os
@@ -40,9 +40,10 @@ def sample(env,
             acs.append(ac)
             next_ob, rew, done, _ = env.step(ac)
             steps += 1
+            ob = next_ob
             rewards.append(rew)
             next_obs.append(next_ob)
-            if done or steps > 10:
+            if done or steps > 30:
                 break
         path = {"observations" : np.array(obs),
                 "rewards" : np.array(rewards),
@@ -83,6 +84,8 @@ def plot_comparison(env, dyn_model):
 
 def train(env,
          cost_fn,
+         load_model,
+         model_path,
          logdir=None,
          render=False,
          learning_rate_dyn=1e-3,
@@ -99,7 +102,7 @@ def train(env,
          n_layers=2,
          size=500,
          activation=tf.nn.relu,
-         output_activation=None
+         output_activation=None,
          ):
 
     """
@@ -184,7 +187,10 @@ def train(env,
                     batch_size=batch_size,
                     iterations=policy_iters,
                     learning_rate=learning_rate_policy,
-                    sess=sess)
+                    sess=sess,
+                    model_path=model_path,
+                    save_path="./policy/",
+                    load_model=load_model)
 
     mpc_controller = MPCcontroller(env=env,
                                    dyn_model=dyn_model,
@@ -193,8 +199,8 @@ def train(env,
                                    num_simulated_paths=num_simulated_paths)
 
     lqr_controller = LQRcontroller(env=env,
-                                   delta=0.005,
-                                   T=2,
+                                   delta=0.00005,
+                                   T=5,
                                    dyn_model=dyn_model,
                                    cost_fn=cost_fn,
                                    iterations=1)
@@ -215,7 +221,6 @@ def train(env,
 
     # training the MPC controller as well as dynamics
     for itr in range(onpol_iters):
-        """ YOUR CODE HERE """
 
         print("fitting dynamics...")
         dyn_model.fit(data)
@@ -257,37 +262,41 @@ def train(env,
     while True:
         a = policy.get_action(ob.reshape((1, ob.shape[0])))
         next_ob, reward, done, info = env.step(a[0])
+        print("predicted ob", dyn_model.predict(ob, a))
+        print("actual ob", (next_ob - normalization[0]) / (normalization[1] + 1e-10))
         env.render()
         ob = next_ob
         if done:
-            break
+            ob = env.reset()
 
 def main():
 
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env_name', type=str, default='HalfCheetah-v1')
+    parser.add_argument('--env_name', type=str, default='-')
     # Experiment meta-params
     parser.add_argument('--exp_name', type=str, default='mb_mpc')
     parser.add_argument('--seed', type=int, default=3)
     parser.add_argument('--render', action='store_true')
+    parser.add_argument('--model_path', '-mp', type=str, default="./policy/-0")
+    parser.add_argument('--load_model', '-lm', type=str, default=False)
     # Training args
     parser.add_argument('--learning_rate_dyn', '-lr', type=float, default=1e-3)
     parser.add_argument('--learning_rate_policy', '-lrp', type=float, default=1e-4)
-    parser.add_argument('--onpol_iters', '-n', type=int, default=2)
-    parser.add_argument('--dyn_iters', '-nd', type=int, default=60)
+    parser.add_argument('--onpol_iters', '-n', type=int, default=20)
+    parser.add_argument('--dyn_iters', '-nd', type=int, default=100)
     parser.add_argument('--policy_iters', '-ndp', type=int, default=100)
     parser.add_argument('--batch_size', '-b', type=int, default=512)
     # Data collection
     parser.add_argument('--random_paths', '-r', type=int, default=10)
     parser.add_argument('--onpol_paths', '-d', type=int, default=10)
-    parser.add_argument('--simulated_paths', '-sp', type=int, default=100)
+    parser.add_argument('--simulated_paths', '-sp', type=int, default=1000)
     parser.add_argument('--ep_len', '-ep', type=int, default=1000)
     # Neural network architecture args
     parser.add_argument('--n_layers', '-l', type=int, default=2)
     parser.add_argument('--size', '-s', type=int, default=500)
     # MPC Controller
-    parser.add_argument('--mpc_horizon', '-m', type=int, default=15)
+    parser.add_argument('--mpc_horizon', '-m', type=int, default=4)
     args = parser.parse_args()
 
     # Set seed
@@ -308,10 +317,12 @@ def main():
         cost_fn = cheetah_cost_fn
 
     else:
-        env = gym.make('HalfCheetah-v1')
-        cost_fn = cheetah_cost_fn
+        env = gym.make('InvertedPendulum-v1')
+        cost_fn = pendulum_cost_fn
     train(env=env,
                  cost_fn=cost_fn,
+                 load_model=args.load_model,
+                 model_path=args.model_path,
                  logdir=logdir,
                  render=args.render,
                  learning_rate_dyn=args.learning_rate_dyn,
