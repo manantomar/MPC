@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.linalg import inv
 from scipy.optimize import approx_fprime
+import time
 
 class iLQR:
 
@@ -85,7 +86,6 @@ class iLQR:
     def backward(self, x_seq, u_seq):
 
         "initialize F_t, C_t, f_t, c_t, V_t, v_t"
-
         C, F, c, f = self.differentiate(x_seq, u_seq)
 
         n = x_seq[0].shape[0]
@@ -99,7 +99,9 @@ class iLQR:
         C_xu = C[-1][:n,n:]
         C_ux = C[-1][n:,:n]
         C_uu = C[-1][n:,n:]
-        print(C_uu)
+
+        C_uu = C_uu + 0.01 * np.eye(C_uu.shape[0])
+
         K = np.zeros((self.T+1, u_seq[0].shape[0], x_seq[0].shape[0]))
         k = np.zeros((self.T+1, u_seq[0].shape[0]))
 
@@ -122,8 +124,8 @@ class iLQR:
 
             "update Q"
 
-            Q[t] = C[t] + np.dot(np.dot(F[t].T, V[t+1]), F[t])
-            q[t] = c[t] + np.dot(np.dot(F[t].T, V[t+1]), f[t]) + np.dot(F[t].T, v[t+1])
+            Q[t] = C[t] + np.dot(np.dot(F[t].T, V[t+1] + 0.01 * np.eye(V[t+1].shape[0])), F[t])
+            q[t] = c[t] + np.dot(F[t].T, v[t+1]) #+ np.dot(np.dot(F[t].T, V[t+1] + 0.00001 * np.eye(V[t+1].shape[0])), f[t])
 
             "differentiate Q to get Q_uu, Q_xx, Q_ux, Q_u, Q_x"
 
@@ -135,6 +137,7 @@ class iLQR:
             Q_ux = Q[t][n:,:n]
             Q_uu = Q[t][n:,n:]
 
+            Q_uu = Q_uu + 0.01 * np.eye(Q_uu.shape[0])
             "update K, k, V, v"
 
             K[t] = -np.dot(inv(Q_uu), Q_ux)
@@ -152,4 +155,4 @@ class iLQR:
         "TODO : Add delta U's to given action array"
 
         mean = np.dot(self.K[t], (state - x)) + self.k[t] + u
-        return np.random.normal(mean, 1)
+        return mean #np.random.normal(mean, 1)

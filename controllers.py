@@ -93,7 +93,7 @@ class LQRcontroller(iLQR):
 		for i in range(self.iterations):
 			self.backward(X_hat, U_hat)
 
-			x = X_hat[0]
+			x = state #X_hat[0]
 
 			U = np.zeros(U_hat.shape)
 			X = np.zeros(X_hat.shape)
@@ -103,12 +103,12 @@ class LQRcontroller(iLQR):
 
 				X[t] = x
 				U[t] = u
-				
+
 				x = self.dyn_model.predict(x, u)[0]
 
 			X[-1] = x
-			print("X_hat for iteration {} is {}".format(i, X_hat))
-			print("U_hat for iteration {} is {}".format(i, U_hat))
+			#print("X_hat for iteration {} is {}".format(i, X_hat))
+			#print("U_hat for iteration {} is {}".format(i, U_hat))
 			X_hat = X
 			U_hat = U
 

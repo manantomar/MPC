@@ -11,11 +11,11 @@ def pendulum_cost_fn(state, action, next_state):
 
         scores=np.zeros((state.shape[0],))
 
-        scores-= (next_state[:,1] - state[:,1]) + 0.001 * action**2
+        scores += np.abs(next_state[:,1]) #+ 0.001 * action**2
         return scores
 
-    score = np.abs(next_state[1]) + 0.001 * action**2
-    return score
+    score = np.abs(next_state[1]) #+ 0.001 * action**2
+    return 100 * score
 
 def cheetah_cost_fn(state, action, next_state):
     if len(state.shape) > 1:

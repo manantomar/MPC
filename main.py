@@ -11,6 +11,7 @@ import os
 import copy
 #import matplotlib.pyplot as plt
 from cheetah_env import HalfCheetahEnvNew
+from mpi4py import MPI
 
 def sample(env,
            controller,
@@ -43,7 +44,8 @@ def sample(env,
             ob = next_ob
             rewards.append(rew)
             next_obs.append(next_ob)
-            if done or steps > 30:
+            if done or steps > 5:
+                print("steps", steps)
                 break
         path = {"observations" : np.array(obs),
                 "rewards" : np.array(rewards),
@@ -139,7 +141,7 @@ def train(env,
 
     """
 
-    logz.configure_output_dir(logdir)
+    #logz.configure_output_dir(logdir)
 
     #========================================================
     #
@@ -200,16 +202,20 @@ def train(env,
 
     lqr_controller = LQRcontroller(env=env,
                                    delta=0.00005,
-                                   T=5,
+                                   T=3,
                                    dyn_model=dyn_model,
                                    cost_fn=cost_fn,
                                    iterations=1)
 
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
 
     #========================================================
     #
     # Tensorflow session building.
     #
+
     sess.__enter__()
     tf.global_variables_initializer().run()
 
@@ -222,52 +228,64 @@ def train(env,
     # training the MPC controller as well as dynamics
     for itr in range(onpol_iters):
 
-        print("fitting dynamics...")
+        print("fitting dynamics for worker ", rank)
         dyn_model.fit(data)
-        print("sampling new trajectories...")
+        print("sampling new trajectories from worker ", rank)
         new_data = sample(env, lqr_controller, num_paths_onpol, env_horizon)
 
-        costs, returns = [], []
-
-        for path in data:
-
-            costs.append(path_cost(cost_fn, path))
-            returns.append(np.sum(path['rewards']))
-
-        print("returns ",returns)
         data += new_data
+        comm.send(new_data, 0)
 
-        print("fitting policy...")
-        policy.fit(data)
-        # LOGGING
-        # Statistics for performance of MPC policy using
-        # our learned dynamics model
-        logz.log_tabular('Iteration', itr)
-        # In terms of cost function which your MPC controller uses to plan
-        logz.log_tabular('AverageCost', np.mean(costs))
-        logz.log_tabular('StdCost', np.std(costs))
-        logz.log_tabular('MinimumCost', np.min(costs))
-        logz.log_tabular('MaximumCost', np.max(costs))
-        # In terms of true environment reward of your rolled out trajectory using the MPC controller
-        logz.log_tabular('AverageReturn', np.mean(returns))
-        logz.log_tabular('StdReturn', np.std(returns))
-        logz.log_tabular('MinimumReturn', np.min(returns))
-        logz.log_tabular('MaximumReturn', np.max(returns))
+        if rank == 0:
+            costs, returns = [], []
 
-        logz.dump_tabular()
+            for path in data:
+
+                costs.append(path_cost(cost_fn, path))
+                returns.append(np.sum(path['rewards']))
+
+            print("returns ",returns)
+
+            for i in range(1, size):
+                data += comm.recv(source=i)
+
+            print("fitting policy...")
+            policy.fit(data)
+
+            # LOGGING
+            # Statistics for performance of MPC policy using
+            # our learned dynamics model
+            logz.log_tabular('Iteration', itr)
+            # In terms of cost function which your MPC controller uses to plan
+            logz.log_tabular('AverageCost', np.mean(costs))
+            logz.log_tabular('StdCost', np.std(costs))
+            logz.log_tabular('MinimumCost', np.min(costs))
+            logz.log_tabular('MaximumCost', np.max(costs))
+            # In terms of true environment reward of your rolled out trajectory using the MPC controller
+            logz.log_tabular('AverageReturn', np.mean(returns))
+            logz.log_tabular('StdReturn', np.std(returns))
+            logz.log_tabular('MinimumReturn', np.min(returns))
+            logz.log_tabular('MaximumReturn', np.max(returns))
+
+            logz.dump_tabular()
 
     # applying the learned neural policy
-    ob = env.reset()
+    if rank == 0:
+        ob = env.reset()
 
-    while True:
-        a = policy.get_action(ob.reshape((1, ob.shape[0])))
-        next_ob, reward, done, info = env.step(a[0])
-        print("predicted ob", dyn_model.predict(ob, a))
-        print("actual ob", (next_ob - normalization[0]) / (normalization[1] + 1e-10))
-        env.render()
-        ob = next_ob
-        if done:
-            ob = env.reset()
+        while True:
+            a = policy.get_action(ob.reshape((1, ob.shape[0])))
+
+            # control clipping to be added
+
+            next_ob, reward, done, info = env.step(a[0])
+            print("action", a)
+            print("predicted ob", dyn_model.predict(ob, a))
+            print("actual ob", (next_ob - normalization[0]) / (normalization[1] + 1e-10))
+            env.render()
+            ob = next_ob
+            if done:
+                ob = env.reset()
 
 def main():
 
@@ -283,7 +301,7 @@ def main():
     # Training args
     parser.add_argument('--learning_rate_dyn', '-lr', type=float, default=1e-3)
     parser.add_argument('--learning_rate_policy', '-lrp', type=float, default=1e-4)
-    parser.add_argument('--onpol_iters', '-n', type=int, default=20)
+    parser.add_argument('--onpol_iters', '-n', type=int, default=5)
     parser.add_argument('--dyn_iters', '-nd', type=int, default=100)
     parser.add_argument('--policy_iters', '-ndp', type=int, default=100)
     parser.add_argument('--batch_size', '-b', type=int, default=512)
@@ -304,12 +322,12 @@ def main():
     tf.set_random_seed(args.seed)
 
     # Make data directory if it does not already exist
-    if not(os.path.exists('data')):
-        os.makedirs('data')
-    logdir = args.exp_name + '_' + args.env_name + '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
-    logdir = os.path.join('data', logdir)
-    if not(os.path.exists(logdir)):
-        os.makedirs(logdir)
+    #if not(os.path.exists('data')):
+    #    os.makedirs('data')
+    #logdir = args.exp_name + '_' + args.env_name + '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
+    #logdir = os.path.join('data', logdir)
+    #if not(os.path.exists(logdir)):
+    #    os.makedirs(logdir)
 
     # Make env
     if args.env_name is "HalfCheetah-v1":
@@ -323,7 +341,7 @@ def main():
                  cost_fn=cost_fn,
                  load_model=args.load_model,
                  model_path=args.model_path,
-                 logdir=logdir,
+                 logdir=None,
                  render=args.render,
                  learning_rate_dyn=args.learning_rate_dyn,
                  learning_rate_policy=args.learning_rate_policy,
