@@ -4,7 +4,7 @@ import gym
 from dynamics import NNDynamicsModel
 from policy import NNPolicy
 from controllers import MPCcontroller, RandomController, LQRcontroller
-from cost_functions import cheetah_cost_fn, trajectory_cost_fn, pendulum_cost_fn
+from cost_functions import cheetah_cost_fn, trajectory_cost_fn, pendulum_cost_fn, reacher_cost_fn
 import time
 import logz
 import os
@@ -37,14 +37,14 @@ def sample(env,
             obs.append(ob)
             ac = controller.get_action(ob)
             env.render()
-            #print("action", ac)
+            print("control", ac)
             acs.append(ac)
             next_ob, rew, done, _ = env.step(ac)
             steps += 1
             ob = next_ob
             rewards.append(rew)
             next_obs.append(next_ob)
-            if done or steps > 5:
+            if done or steps > 100:
                 print("steps", steps)
                 break
         path = {"observations" : np.array(obs),
@@ -202,10 +202,10 @@ def train(env,
 
     lqr_controller = LQRcontroller(env=env,
                                    delta=0.00005,
-                                   T=3,
+                                   T=20,
                                    dyn_model=dyn_model,
                                    cost_fn=cost_fn,
-                                   iterations=1)
+                                   iterations=2)
 
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
@@ -231,7 +231,7 @@ def train(env,
         print("fitting dynamics for worker ", rank)
         dyn_model.fit(data)
         print("sampling new trajectories from worker ", rank)
-        new_data = sample(env, lqr_controller, num_paths_onpol, env_horizon)
+        new_data = sample(env, mpc_controller, num_paths_onpol, env_horizon)
 
         data += new_data
         comm.send(new_data, 0)
@@ -291,7 +291,7 @@ def main():
 
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env_name', type=str, default='-')
+    parser.add_argument('--env_name', type=str, default='Pendulum-v1')
     # Experiment meta-params
     parser.add_argument('--exp_name', type=str, default='mb_mpc')
     parser.add_argument('--seed', type=int, default=3)
@@ -314,7 +314,7 @@ def main():
     parser.add_argument('--n_layers', '-l', type=int, default=2)
     parser.add_argument('--size', '-s', type=int, default=500)
     # MPC Controller
-    parser.add_argument('--mpc_horizon', '-m', type=int, default=4)
+    parser.add_argument('--mpc_horizon', '-m', type=int, default=20)
     args = parser.parse_args()
 
     # Set seed
@@ -334,9 +334,13 @@ def main():
         env = HalfCheetahEnvNew()
         cost_fn = cheetah_cost_fn
 
-    else:
+    elif args.env_name is "Pendulum-v1":
         env = gym.make('InvertedPendulum-v1')
         cost_fn = pendulum_cost_fn
+
+    elif args.env_name is "Reacher-v1":
+        env = gym.make('Reacher-v1')
+        cost_fn = reacher_cost_fn
     train(env=env,
                  cost_fn=cost_fn,
                  load_model=args.load_model,

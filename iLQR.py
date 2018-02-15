@@ -1,7 +1,9 @@
 import numpy as np
+import scipy
 from scipy.linalg import inv
 from scipy.optimize import approx_fprime
 import time
+from autograd import jacobian
 
 class iLQR:
 
@@ -12,14 +14,17 @@ class iLQR:
         self.T = T
         self.dyn_model = dyn_model
         self.cost_fn = cost_fn
+        self.control_low = self.env.action_space.low
+        self.control_high = self.env.action_space.high
 
     def simulate_step(self, x):
 
         xu = [x[:self.env.observation_space.shape[0]], x[self.env.observation_space.shape[0]:]]
 
         next_x = self.dyn_model.predict(xu[0], xu[1])
-        delta_x = next_x - xu[0]
-
+        #next_x, rew, _, _ = self.env.step(xu[1])
+        #next_x = [next_x]
+        #print(next_x)
         "get cost"
         cost = self.cost_fn(xu[0], xu[1], next_x[0])
 
@@ -155,4 +160,4 @@ class iLQR:
         "TODO : Add delta U's to given action array"
 
         mean = np.dot(self.K[t], (state - x)) + self.k[t] + u
-        return mean #np.random.normal(mean, 1)
+        return np.clip(mean, self.control_low, self.control_high) #np.random.normal(mean, 1)

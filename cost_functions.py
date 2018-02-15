@@ -5,6 +5,13 @@ import numpy as np
 #
 # Environment-specific cost functions:
 #
+def reacher_cost_fn(state, action, next_state):
+
+    #if len(state.shape) > 1:
+
+    score = np.linalg.norm(next_state[-1])
+    return score
+
 def pendulum_cost_fn(state, action, next_state):
 
     if len(state.shape) > 1:
@@ -15,7 +22,8 @@ def pendulum_cost_fn(state, action, next_state):
         return scores
 
     score = np.abs(next_state[1]) #+ 0.001 * action**2
-    return 100 * score
+
+    return score
 
 def cheetah_cost_fn(state, action, next_state):
     if len(state.shape) > 1:

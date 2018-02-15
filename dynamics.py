@@ -77,6 +77,6 @@ class NNDynamicsModel():
             states = states.reshape((1, states.shape[0]))
         if len(actions.shape) == 1:
             actions = actions.reshape((1, actions.shape[0]))
-
+            
         next_observations = states + tf.get_default_session().run(self.model, feed_dict = {self.states : states, self.actions : actions})
         return next_observations

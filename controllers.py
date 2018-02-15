@@ -100,7 +100,7 @@ class LQRcontroller(iLQR):
 
 			for t in range(self.T - 1):
 				u = self.get_action_one_step(x, t, X_hat[t], U_hat[t])
-
+				#print("control", u)
 				X[t] = x
 				U[t] = u
 
