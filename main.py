@@ -35,7 +35,7 @@ def sample(env,
 
         while True:
             obs.append(ob)
-            ac = controller.get_action(ob)
+            ac = controller.get_action(ob, steps)
             env.render()
             print("control", ac)
             acs.append(ac)
@@ -201,11 +201,11 @@ def train(env,
                                    num_simulated_paths=num_simulated_paths)
 
     lqr_controller = LQRcontroller(env=env,
-                                   delta=0.00005,
-                                   T=20,
+                                   delta=0.005,
+                                   T=50,
                                    dyn_model=dyn_model,
                                    cost_fn=cost_fn,
-                                   iterations=2)
+                                   iterations=1)
 
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
@@ -231,7 +231,7 @@ def train(env,
         print("fitting dynamics for worker ", rank)
         dyn_model.fit(data)
         print("sampling new trajectories from worker ", rank)
-        new_data = sample(env, mpc_controller, num_paths_onpol, env_horizon)
+        new_data = sample(env, lqr_controller, num_paths_onpol, env_horizon)
 
         data += new_data
         comm.send(new_data, 0)
@@ -294,7 +294,7 @@ def main():
     parser.add_argument('--env_name', type=str, default='Pendulum-v1')
     # Experiment meta-params
     parser.add_argument('--exp_name', type=str, default='mb_mpc')
-    parser.add_argument('--seed', type=int, default=3)
+    parser.add_argument('--seed', type=int, default=5)
     parser.add_argument('--render', action='store_true')
     parser.add_argument('--model_path', '-mp', type=str, default="./policy/-0")
     parser.add_argument('--load_model', '-lm', type=str, default=False)

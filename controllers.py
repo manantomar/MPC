@@ -8,7 +8,7 @@ class Controller():
 		pass
 
 	# Get the appropriate action(s) for this state(s)
-	def get_action(self, state):
+	def get_action(self, state, steps):
 		pass
 
 
@@ -17,7 +17,7 @@ class RandomController(Controller):
 		""" YOUR CODE HERE """
 		self.env = env
 
-	def get_action(self, state):
+	def get_action(self, state, steps):
 		""" YOUR CODE HERE """
 		""" Your code should randomly sample an action uniformly from the action space """
 		action = self.env.action_space.sample()
@@ -39,7 +39,7 @@ class MPCcontroller(Controller):
 		self.cost_fn = cost_fn
 		self.num_simulated_paths = num_simulated_paths
 
-	def get_action(self, state):
+	def get_action(self, state, steps):
 		""" YOUR CODE HERE """
 		""" Note: be careful to batch your simulations through the model for speed """
 
@@ -74,32 +74,33 @@ class LQRcontroller(iLQR):
 		iLQR.__init__(self, env, delta, T, dyn_model, cost_fn)
 		self.iterations = iterations
 
-	def get_action(self, state):
+	def get_action(self, state, steps):
 
-		U_hat = np.reshape([self.env.action_space.sample() for i in range(self.T - 1)], (self.T - 1, self.env.action_space.shape[0]))
+		if not steps:
+			self.U_hat = np.reshape([np.zeros(self.env.action_space.sample().shape) for i in range(self.T - 1)], (self.T - 1, self.env.action_space.shape[0]))
 
-		X_hat = []
-		X_hat.append(state)
-		x = state
+			self.X_hat = []
+			self.X_hat.append(state)
+			x = state
 
-		for i in range(self.T - 1):
-			next_state = self.dyn_model.predict(x, U_hat[i,:])
+			for i in range(self.T - 1):
+				next_state = self.dyn_model.predict(x, self.U_hat[i,:])
 
-			X_hat.append(next_state[0])
-			x = next_state
+				self.X_hat.append(next_state[0])
+				x = next_state
 
-		X_hat = np.asarray(X_hat)
+			self.X_hat = np.asarray(self.X_hat)
 
 		for i in range(self.iterations):
-			self.backward(X_hat, U_hat)
+			self.backward(self.X_hat, self.U_hat)
 
 			x = state #X_hat[0]
 
-			U = np.zeros(U_hat.shape)
-			X = np.zeros(X_hat.shape)
+			U = np.zeros(self.U_hat.shape)
+			X = np.zeros(self.X_hat.shape)
 
 			for t in range(self.T - 1):
-				u = self.get_action_one_step(x, t, X_hat[t], U_hat[t])
+				u = self.get_action_one_step(x, t, self.X_hat[t], self.U_hat[t])
 				#print("control", u)
 				X[t] = x
 				U[t] = u
@@ -108,8 +109,8 @@ class LQRcontroller(iLQR):
 
 			X[-1] = x
 			#print("X_hat for iteration {} is {}".format(i, X_hat))
-			#print("U_hat for iteration {} is {}".format(i, U_hat))
-			X_hat = X
-			U_hat = U
+			#print("U_hat for iteration {} is {}".format(i, self.U_hat))
+			self.X_hat = X
+			self.U_hat = U
 
-		return U_hat[0]
+		return self.U_hat[0]

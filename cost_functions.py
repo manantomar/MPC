@@ -7,7 +7,12 @@ import numpy as np
 #
 def reacher_cost_fn(state, action, next_state):
 
-    #if len(state.shape) > 1:
+    if len(state.shape) > 1:
+
+        scores=np.zeros((state.shape[0],))
+
+        scores += np.linalg.norm(next_state[:,-1])
+        return scores
 
     score = np.linalg.norm(next_state[-1])
     return score

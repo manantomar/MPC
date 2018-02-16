@@ -10,6 +10,10 @@ class iLQR:
     def __init__(self, env, delta, T, dyn_model, cost_fn):
 
         self.env = env
+        self.min_factor = 2
+        self.factor = self.min_factor
+        self.min_mu = 1e-6
+        self.mu = self.min_mu
         self.delta = delta
         self.T = T
         self.dyn_model = dyn_model
@@ -17,14 +21,22 @@ class iLQR:
         self.control_low = self.env.action_space.low
         self.control_high = self.env.action_space.high
 
+    def increase(self, mu):
+        self.factor = np.maximum(self.factor, self.factor * self.min_factor)
+        self.mu = np.maximum(self.min_mu, self.mu * self.factor)
+
+    def decrease(self, mu):
+        self.factor = np.minimum(1 / self.min_factor, self.factor / self.min_factor)
+        if self.mu * self.factor > self.min_mu:
+            self.mu = self.mu * self.factor
+        else:
+            self.mu = 0
+
     def simulate_step(self, x):
 
         xu = [x[:self.env.observation_space.shape[0]], x[self.env.observation_space.shape[0]:]]
 
         next_x = self.dyn_model.predict(xu[0], xu[1])
-        #next_x, rew, _, _ = self.env.step(xu[1])
-        #next_x = [next_x]
-        #print(next_x)
         "get cost"
         cost = self.cost_fn(xu[0], xu[1], next_x[0])
 
@@ -105,7 +117,7 @@ class iLQR:
         C_ux = C[-1][n:,:n]
         C_uu = C[-1][n:,n:]
 
-        C_uu = C_uu + 0.01 * np.eye(C_uu.shape[0])
+        #C_uu = C_uu + self.mu * np.eye(C_uu.shape[0])
 
         K = np.zeros((self.T+1, u_seq[0].shape[0], x_seq[0].shape[0]))
         k = np.zeros((self.T+1, u_seq[0].shape[0]))
@@ -113,23 +125,28 @@ class iLQR:
         V = np.zeros((self.T+1, x_seq[0].shape[0], x_seq[0].shape[0]))
         v = np.zeros((self.T+1, x_seq[0].shape[0]))
 
-        K[-1] = -np.dot(inv(C_uu), C_ux)
-        k[-1] = -np.dot(inv(C_uu), c_u)
+        #K[-1] = -np.dot(inv(C_uu), C_ux)
+        #k[-1] = -np.dot(inv(C_uu), c_u)
 
-        V[-1] = C_xx + np.dot(C_xu, K[-1]) + np.dot(K[-1].T, C_ux) + np.dot(np.dot(K[-1].T, C_uu), K[-1])
-        v[-1] = c_x + np.dot(C_xu, k[-1]) + np.dot(K[-1].T, c_u) + np.dot(np.dot(K[-1].T, C_uu), k[-1])
+        #V[-1] = C_xx + np.dot(C_xu, K[-1]) + np.dot(K[-1].T, C_ux) + np.dot(np.dot(K[-1].T, C_uu), K[-1])
+        #v[-1] = c_x + np.dot(C_xu, k[-1]) + np.dot(K[-1].T, c_u) + np.dot(np.dot(K[-1].T, C_uu), k[-1])
+        V[-1] = C_xx
+        v[-1] = c_x
 
         "initialize Q_t1 and q_t1"
 
         Q = list(np.zeros((self.T)))
         q = list(np.zeros((self.T)))
 
+        self.std = []
         "loop till horizon"
-        for t in range(self.T-1, -1, -1):
 
+        t = self.T-1
+        while t >= 0:
+        #for t in range(self.T-1, -1, -1):
             "update Q"
 
-            Q[t] = C[t] + np.dot(np.dot(F[t].T, V[t+1] + 0.01 * np.eye(V[t+1].shape[0])), F[t])
+            Q[t] = C[t] + np.dot(np.dot(F[t].T, V[t+1] + self.mu * np.eye(V[t+1].shape[0])), F[t]) #+ 0.01 * np.eye(V[t+1].shape[0])),
             q[t] = c[t] + np.dot(F[t].T, v[t+1]) #+ np.dot(np.dot(F[t].T, V[t+1] + 0.00001 * np.eye(V[t+1].shape[0])), f[t])
 
             "differentiate Q to get Q_uu, Q_xx, Q_ux, Q_u, Q_x"
@@ -142,22 +159,31 @@ class iLQR:
             Q_ux = Q[t][n:,:n]
             Q_uu = Q[t][n:,n:]
 
-            Q_uu = Q_uu + 0.01 * np.eye(Q_uu.shape[0])
-            "update K, k, V, v"
+            #Q_uu = Q_uu + 100 * np.eye(Q_uu.shape[0])
+            try:
+                np.linalg.cholesky(Q_uu)
+            except:
+                self.increase(self.mu)
+                continue
 
+            "update K, k, V, v"
+            #print("q_uu", Q_uu)
             K[t] = -np.dot(inv(Q_uu), Q_ux)
             k[t] = -np.dot(inv(Q_uu), q_u)
 
             V[t] = Q_xx + np.dot(Q_xu, K[t]) + np.dot(K[t].T, Q_ux) + np.dot(np.dot(K[t].T, Q_uu), K[t])
             v[t] = q_x + np.dot(Q_xu, k[t]) + np.dot(K[t].T, q_u) + np.dot(np.dot(K[t].T, Q_uu), k[t])
 
+            self.std.append(inv(Q_uu))
+            self.decrease(self.mu)
+            t -= 1
+
         self.K = K
         self.k = k
-        self.std = inv(Q_uu)
 
     def get_action_one_step(self, state, t, x, u):
 
         "TODO : Add delta U's to given action array"
-
+        #print("Q_uu ", self.std[t])
         mean = np.dot(self.K[t], (state - x)) + self.k[t] + u
-        return np.clip(mean, self.control_low, self.control_high) #np.random.normal(mean, 1)
+        return np.clip(np.random.normal(mean, self.std[t]), self.control_low, self.control_high)
